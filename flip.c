@@ -32,6 +32,9 @@
 // clear bit n in v
 #define BIT_CLEAR(v,n)      ((v) =  (v) & ~BITMASK(n))
 
+// declare a mutex, and it is initialized as well
+static pthread_mutex_t      mutex          = PTHREAD_MUTEX_INITIALIZER;
+
 // Define function that is used by threads
 void *flip(void *multiple);
 
@@ -41,33 +44,49 @@ int main (void)
     // (see thread_test() and thread_mutex_test() how to use threads and mutexes,
     //  see bit_test() how to manipulate bits in a large integer)
     
-    // Thread id
-    pthread_t tid;
-    // Thread attribute
-    pthread_attr_t attr;
+    // Thread count
+    int threadcount = 0;
+    int indexToJoin = 0;
+    // Thread ids TODO:check if -1 is correct
+    pthread_t tid[NROF_THREADS];
+    // Thread attributes
+    pthread_attr_t attr[NROF_THREADS];
     // Thread parameter
-    int *parameter;
-    parameter = malloc (sizeof (int));
+    int parameters[NROF_THREADS];
+    //parameter = malloc (sizeof (int));
     // Iterator value
     int i;
     // Multiple value (skip 1)
     int multiple;
-
+    
     // Initialize buffer: Set all bits (elements) to 1
     for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         buffer[i] = ~0;
     }
 
-    // Get default attributes for thread
-    pthread_attr_init(&attr);
-
     // Flip elements of the buffer according to the current multiple
     for (multiple = 2; multiple < NROF_PIECES; multiple++) {
         // Start thread for the current multiple
-        *parameter = multiple;
-        pthread_create(&tid, &attr, flip, parameter);
-        pthread_join(tid, NULL);
+        parameters[threadcount] = multiple;
+
+        // Get default attributes for thread
+        pthread_attr_init(&attr[threadcount]);
+        // Create thread
+        pthread_create(&tid[threadcount], NULL, flip, &parameters[threadcount]);
+        threadcount++;
+        
+        // Check if NROF_THREADS has been reached
+        if (threadcount >= NROF_THREADS) {
+            pthread_join(tid[threadcount - 1], NULL);
+            threadcount--;
+        }
     }
+
+    // Wait for all threads to finish.
+    for (i = 0; i < threadcount; i++) {
+        pthread_join(tid[i], NULL);
+    }
+
 
     // Print all elements in buffer which are 1 -> convert elements to decimal notation.
     // Iterate over all buffer indexes
@@ -97,7 +116,7 @@ void *flip(void *arg)
 {
     // Retrieve pointer value and store it as integer.
     int multiple = *(int *) arg;
-
+    //printf("%d\n", multiple);
     int i;
     for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         int bit;
@@ -106,11 +125,13 @@ void *flip(void *arg)
             int value = 128 * i + bit;
             if (value % (int) multiple == 0) {
                 // Flip bit
+                pthread_mutex_lock (&mutex);
                 if (BIT_IS_SET(buffer[i], bit)) {
                     BIT_CLEAR(buffer[i], bit);
                 } else {
                     BIT_SET(buffer[i], bit);
                 }
+                pthread_mutex_unlock (&mutex);
             }
         }
     }
