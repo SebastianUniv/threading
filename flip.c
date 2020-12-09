@@ -43,7 +43,11 @@ int main (void)
     
     // Thread id
     pthread_t tid;
+    // Thread attribute
     pthread_attr_t attr;
+    // Thread parameter
+    int *parameter;
+    parameter = malloc (sizeof (int));
     // Iterator value
     int i;
     // Multiple value (skip 1)
@@ -60,7 +64,8 @@ int main (void)
     // Flip elements of the buffer according to the current multiple
     for (multiple = 2; multiple < NROF_PIECES; multiple++) {
         // Start thread for the current multiple
-        pthread_create(&tid, &attr, flip, multiple);
+        *parameter = multiple;
+        pthread_create(&tid, &attr, flip, parameter);
         pthread_join(tid, NULL);
     }
 
@@ -88,8 +93,11 @@ int main (void)
 }
 
 // Flips elements of buffer according to multiple
-void *flip(void *multiple)
+void *flip(void *arg)
 {
+    // Retrieve pointer value and store it as integer.
+    int multiple = *(int *) arg;
+
     int i;
     for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         int bit;
