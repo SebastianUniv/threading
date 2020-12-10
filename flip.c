@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <errno.h>          // for perror()
 #include <pthread.h>
+#include <time.h> // for timing application
 
 #include "uint128.h"
 #include "flip.h"
@@ -44,6 +45,8 @@ int main (void)
     // (see thread_test() and thread_mutex_test() how to use threads and mutexes,
     //  see bit_test() how to manipulate bits in a large integer)
     
+    // Count time consumed by program
+    clock_t begin = clock();
     // Thread count
     int threadcount = 0;
     int indexToJoin = 0;
@@ -106,7 +109,10 @@ int main (void)
             }
         }
     }
-    finish:
+    finish: ;
+        clock_t end = clock();
+        double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+        printf("Time spent: %f\n", time_spent);
     // End of program
     return (0);
 }
