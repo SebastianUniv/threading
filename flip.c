@@ -16,7 +16,6 @@
 #include <stdbool.h>
 #include <errno.h>          // for perror()
 #include <pthread.h>
-#include <time.h> // for timing application
 #include <semaphore.h>
 
 #include "uint128.h"
@@ -35,7 +34,7 @@
 #define BIT_CLEAR(v,n)      ((v) =  (v) & ~BITMASK(n))
 
 // declare a mutex, and it is initialized as well
-pthread_mutex_t      mutex_flip[((NROF_PIECES/128))];
+pthread_mutex_t      mutex_flip[NROF_PIECES];
 static pthread_mutex_t      thread_init          = PTHREAD_MUTEX_INITIALIZER;
 // Semaphore used for controlling number of active threads
 sem_t sem;
@@ -45,8 +44,6 @@ void *flip(void *multiple);
 
 int main (void)
 {   
-    // Count time consumed by program, set starting time
-    clock_t begin = clock();
     // Thread id
     pthread_t tid;
     // Thread attribute
@@ -60,8 +57,11 @@ int main (void)
 
     // Initialize buffer (Set all bits (elements) to 1) and mutex locks
     for (i = 0; i < ((NROF_PIECES/128)); i++) {
-        pthread_mutex_init(&mutex_flip[i], NULL);
         buffer[i] = ~0;
+    }
+
+    for (i = 0; i < NROF_PIECES; i++) {
+        pthread_mutex_init(&mutex_flip[i], NULL);
     }
 
     // Initialize semaphore, set max NROF_THREADS
@@ -109,11 +109,6 @@ int main (void)
         }
     }
     finish: ;
-    // Set end time
-    clock_t end = clock();
-    // Calculate time spent and print this to console
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("Time spent: %f\n", time_spent);
     // End of program
     return (0);
 }
@@ -129,20 +124,20 @@ void *flip(void *arg)
     int i;
     for (i = 0; i < ((NROF_PIECES/128)); i++) {
         int bit;
-        pthread_mutex_lock (&mutex_flip[i]);
         for (bit = 0; bit < 127; bit++) {
             // Convert current element to decimal value and check if it can be divided by the current multiple.
             int value = 128 * i + bit;
             if (value % multiple == 0) {
                 // Flip bit
+                pthread_mutex_lock (&mutex_flip[value]);
                 if (BIT_IS_SET(buffer[i], bit)) {
                     BIT_CLEAR(buffer[i], bit);
                 } else {
                     BIT_SET(buffer[i], bit);
                 }
+                pthread_mutex_unlock (&mutex_flip[value]);
             }
         }
-        pthread_mutex_unlock (&mutex_flip[i]);
     }
 
     // Increase semaphore since this thread has finished
