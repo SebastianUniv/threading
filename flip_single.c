@@ -10,14 +10,13 @@
  * Extra steps can lead to higher marks because we want students to take the initiative. 
  * 
  */
- 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <errno.h>          // for perror()
 #include <pthread.h>
 #include <time.h> // for timing application
-#include <semaphore.h>
 
 #include "uint128.h"
 #include "flip.h"
@@ -34,65 +33,42 @@
 // clear bit n in v
 #define BIT_CLEAR(v,n)      ((v) =  (v) & ~BITMASK(n))
 
-// declare a mutex, and it is initialized as well
-pthread_mutex_t      mutex_flip[((NROF_PIECES/128))];
-static pthread_mutex_t      thread_init          = PTHREAD_MUTEX_INITIALIZER;
-// Semaphore used for controlling number of active threads
-sem_t sem;
-
 // Define function that is used by threads
 void *flip(void *multiple);
 
 int main (void)
-{   
+{
     // Count time consumed by program, set starting time
     clock_t begin = clock();
     // Thread id
     pthread_t tid;
-    // Thread attribute
-    pthread_attr_t tattr;
-    // Thread parameter
-    int parameter;
+    pthread_attr_t attr;
     // Iterator value
     int i;
     // Multiple value (skip 1)
     int multiple;
 
-    // Initialize buffer (Set all bits (elements) to 1) and mutex locks
-    for (i = 0; i < ((NROF_PIECES/128)); i++) {
-        pthread_mutex_init(&mutex_flip[i], NULL);
+    // Initialize buffer: Set all bits (elements) to 1
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         buffer[i] = ~0;
     }
 
-    // Initialize semaphore, set max NROF_THREADS
-    sem_init(&sem, 0, NROF_THREADS);
-    // Set thread attribute to detached (pthread_join not needed)
-    pthread_attr_init(&tattr);
-    pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
+    // Get default attributes for thread
+    pthread_attr_init(&attr);
 
-    // Start creating threads for every multiple
+    // Flip elements of the buffer according to the current multiple
     for (multiple = 2; multiple < NROF_PIECES; multiple++) {
-        // Wait for resource to become available
-        sem_wait(&sem);
-        // Lock so the thread parameter is secured
-        pthread_mutex_lock (&thread_init);
-        parameter = multiple;
-        // Create thread
-        pthread_create(&tid, &tattr, flip, &parameter);
+        // Start thread for the current multiple
+        pthread_create(&tid, &attr, flip, multiple);
+        pthread_join(tid, NULL);
     }
-
-    // Wait for all threads to finish [Probably not needed]
-    for (i = 0; i < NROF_THREADS; i++) {
-        sem_wait(&sem);
-    }
-    sem_destroy(&sem);
 
     // Print all elements in buffer which are 1 -> convert elements to decimal notation.
     // Iterate over all buffer indexes
-    for (i = 0; i < ((NROF_PIECES/128)); i++) {
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         // Iterate over all elements in buffer
         int bit;
-        for (bit = 0; bit < 127; bit++) {
+        for (bit = 0; bit < 128; bit++) {
             // Check if bit is set, if so convert to decimal.
             if (BIT_IS_SET(buffer[i], bit)) {
                 int value = 128 * i + bit;
@@ -100,11 +76,8 @@ int main (void)
                 if (value > NROF_PIECES) {
                     goto finish;
                 }
-                if (value == 0) {
-                    continue;
-                }
                 // Print value
-                fprintf(stderr,"%d\n", value);
+                printf("%d\n", value);
             }
         }
     }
@@ -119,21 +92,15 @@ int main (void)
 }
 
 // Flips elements of buffer according to multiple
-void *flip(void *arg)
+void *flip(void *multiple)
 {
-    // Retrieve pointer value and store it as integer.
-    int multiple = *(int *) arg;
-    // Parameter is no longer crucial and can be freed
-    pthread_mutex_unlock (&thread_init);
-
     int i;
-    for (i = 0; i < ((NROF_PIECES/128)); i++) {
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         int bit;
-        pthread_mutex_lock (&mutex_flip[i]);
-        for (bit = 0; bit < 127; bit++) {
+        for (bit = 0; bit < 128; bit++) {
             // Convert current element to decimal value and check if it can be divided by the current multiple.
             int value = 128 * i + bit;
-            if (value % multiple == 0) {
+            if (value % (int) multiple == 0) {
                 // Flip bit
                 if (BIT_IS_SET(buffer[i], bit)) {
                     BIT_CLEAR(buffer[i], bit);
@@ -142,12 +109,7 @@ void *flip(void *arg)
                 }
             }
         }
-        pthread_mutex_unlock (&mutex_flip[i]);
     }
 
-    // Increase semaphore since this thread has finished
-    sem_post(&sem);
-    // Exit thread
     pthread_exit(0);
 }
-
