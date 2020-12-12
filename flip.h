@@ -20,7 +20,7 @@
  * NROF_THREADS: number of threads that can be run in parallel
  * (value must be between 1 and ... (until you run out of system resources))
  */
-#define NROF_THREADS		100
+#define NROF_THREADS		10
 
 /**
  * buffer[]: datastructure of the pieces; each piece is represented by one bit

@@ -35,7 +35,7 @@
 #define BIT_CLEAR(v,n)      ((v) =  (v) & ~BITMASK(n))
 
 // Declare mutex used to secure bit flips
-pthread_mutex_t      mutex_flip[(NROF_PIECES/128) + 1] = PTHREAD_MUTEX_INITIALIZER;;
+static pthread_mutex_t      mutex_flip[(NROF_PIECES/128) + 1]; //= PTHREAD_MUTEX_INITIALIZER;
 
 // Semaphore used for controlling number of active threads
 sem_t sem;
@@ -71,6 +71,11 @@ int main (void)
         buffer[i] = ~0;
     }
 
+    // Initialize mutexes 
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
+        pthread_mutex_init(&(mutex_flip[i]), NULL);
+    }
+        
     // Initialize semaphore, set max NROF_THREADS
     sem_init(&sem, 0, NROF_THREADS);
     // Set thread attribute to detached (pthread_join not needed)
