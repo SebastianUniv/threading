@@ -16,7 +16,6 @@
 #include <stdbool.h>
 #include <errno.h>          // for perror()
 #include <pthread.h>
-#include <time.h> // for timing application
 
 #include "uint128.h"
 #include "flip.h"
@@ -38,8 +37,6 @@ void *flip(void *multiple);
 
 int main (void)
 {
-    // Count time consumed by program, set starting time
-    clock_t begin = clock();
     // Thread id
     pthread_t tid;
     pthread_attr_t attr;
@@ -49,7 +46,7 @@ int main (void)
     int multiple;
 
     // Initialize buffer: Set all bits (elements) to 1
-    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
+    for (i = 0; i < ((NROF_PIECES/128)); i++) {
         buffer[i] = ~0;
     }
 
@@ -65,7 +62,8 @@ int main (void)
 
     // Print all elements in buffer which are 1 -> convert elements to decimal notation.
     // Iterate over all buffer indexes
-    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
+    int count = 0;
+    for (i = 0; i < ((NROF_PIECES/128)); i++) {
         // Iterate over all elements in buffer
         int bit;
         for (bit = 0; bit < 128; bit++) {
@@ -78,15 +76,12 @@ int main (void)
                 }
                 // Print value
                 printf("%d\n", value);
+                count++;
             }
         }
     }
     finish: ;
-    // Set end time
-    clock_t end = clock();
-    // Calculate time spent and print this to console
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("Time spent: %f\n", time_spent);
+    printf("%d\n", count);
     // End of program
     return (0);
 }
@@ -95,7 +90,7 @@ int main (void)
 void *flip(void *multiple)
 {
     int i;
-    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
+    for (i = 0; i < ((NROF_PIECES/128)); i++) {
         int bit;
         for (bit = 0; bit < 128; bit++) {
             // Convert current element to decimal value and check if it can be divided by the current multiple.

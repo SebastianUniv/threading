@@ -2,8 +2,8 @@
  * Operating Systems <2INCO> Practical Assignment
  * Threaded Application
  *
- * STUDENT_NAME_1 (STUDENT_NR_1)
- * STUDENT_NAME_2 (STUDENT_NR_2)
+ * Oscar Robben (1248278)
+ * Bas Gerritsen (1333038)
  *
  * Grading:
  * Students who hand in clean code that fully satisfies the minimum requirements will get an 8. 
@@ -17,6 +17,7 @@
 #include <errno.h>          // for perror()
 #include <pthread.h>
 #include <semaphore.h>
+#include <string.h>
 
 #include "uint128.h"
 #include "flip.h"
@@ -34,18 +35,18 @@
 #define BIT_CLEAR(v,n)      ((v) =  (v) & ~BITMASK(n))
 
 // Declare mutex used to secure bit flips
-pthread_mutex_t      mutex_flip[NROF_PIECES];
-
-// Declare mutex used to secure parameter transmission from main thread to child thread
-static pthread_mutex_t      thread_init[NROF_THREADS]          = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t      mutex_flip[(NROF_PIECES/128) + 1] = PTHREAD_MUTEX_INITIALIZER;;
 
 // Semaphore used for controlling number of active threads
 sem_t sem;
 
+// free Index
+int freeIndex[NROF_THREADS] = { 0 };
+
 // Struct for passing parameters to thread
 struct thread_data
 {
-  int lockIndex;
+  int thread_id;
   int multiple;
 };
 
@@ -55,26 +56,19 @@ void *flip(void *multiple);
 int main (void)
 {   
     // Thread id
-    pthread_t tid;
+    pthread_t tid[NROF_THREADS];
     // Thread attribute
     pthread_attr_t tattr;
     // Thread parameter
-    struct thread_data para[NROF_THREADS];
+    struct thread_data thread_data_array[NROF_THREADS];
     // Iterator value (just declared once and then reused in multiple for loops, doesn't have any further meaning)
     int i;
     // Multiple value to flip bits by (skip 1)
     int multiple;
-    // Index of thread_init mutex lock to be used, this is used so other threads don't have to wait for a single parameter pointer to be freed.
-    int curIndex = 0;
 
     // Initialize buffer (Set all bits (elements) to 1) and mutex locks
-    for (i = 0; i < ((NROF_PIECES/128)); i++) {
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         buffer[i] = ~0;
-    }
-
-    // Initialize mutex locks
-    for (i = 0; i < NROF_PIECES; i++) {
-        pthread_mutex_init(&mutex_flip[i], NULL);
     }
 
     // Initialize semaphore, set max NROF_THREADS
@@ -82,22 +76,27 @@ int main (void)
     // Set thread attribute to detached (pthread_join not needed)
     pthread_attr_init(&tattr);
     pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
-
     // Start creating threads for every multiple
     for (multiple = 2; multiple < NROF_PIECES; multiple++) {
-        // Wait for resource to become available
+        // Wait for resource to become free (if necessary)
         sem_wait(&sem);
-        // Lock so the thread parameter is secured, use lock with curIndex
-        pthread_mutex_lock (&thread_init[curIndex]);
-        // Load values in parameter struct, to be sent to thread
-        para[curIndex].lockIndex = curIndex;
-        para[curIndex].multiple = multiple;
-        // Create thread
-        pthread_create(&tid, &tattr, flip, &para[curIndex]);
-        // Increase curIndex so next thread can immediatly be created (does not have to wait for unlock of curIndex mutex lock)
-        curIndex++;
-        // Modulo since the array is finite, this way it loops over the array
-        curIndex = curIndex % NROF_THREADS;
+        // Index of thread_data_array to be used.
+        int curIndex;
+        // Loop over all indexes to see which one is freed
+        for (curIndex = 0; curIndex < NROF_THREADS; curIndex++) {
+            // If index is free (= 0), then set the parameters of the array at this index
+            if (freeIndex[curIndex] == 0) {
+                // Set index to in use.
+                freeIndex[curIndex] = 1;
+                // Set parameters
+                thread_data_array[curIndex].multiple = multiple;
+                thread_data_array[curIndex].thread_id = curIndex;
+                // Start thread
+                pthread_create(&tid[curIndex], &tattr, flip, (void *) &thread_data_array[curIndex]);
+                // A free index has been intialized to busy for this multiple, so we can continue to the next multiple
+                break;
+            }
+        }
     }
 
     // Wait for all threads to finish [Probably not needed]
@@ -107,18 +106,20 @@ int main (void)
 
     // Remove semaphore
     sem_destroy(&sem);
+    // Remove mutex locks
+    pthread_mutex_destroy(mutex_flip);
 
     // Print all elements in buffer which are 1 -> convert elements to decimal notation.
     // Iterate over all buffer indexes
-    for (i = 0; i < ((NROF_PIECES/128)); i++) {
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         // Iterate over all elements in buffer
         int bit;
-        for (bit = 0; bit < 127; bit++) {
+        for (bit = 0; bit < 128; bit++) {
             // Check if bit is set, if so convert to decimal.
             if (BIT_IS_SET(buffer[i], bit)) {
                 int value = 128 * i + bit;
                 // Check if value is over max number of pieces, if so stop printing.
-                if (value > NROF_PIECES) {
+                if (value >= NROF_PIECES) {
                     goto finish;
                 }
                 // Skip zero
@@ -136,32 +137,41 @@ int main (void)
 }
 
 // Flips elements of buffer according to multiple
-void *flip(void *arg)
+void *flip(void *args)
 {
     // Retrieve pointer value and store it as integer.
+    int thread_id;
+    int multiple;
+
     struct thread_data *parameters;
-    parameters  = (struct thread_data *) arg;
-    // Parameter is no longer crucial and can be freed
-    pthread_mutex_unlock (&thread_init[parameters->lockIndex]);
+    parameters = (struct thread_data *) args;
+    thread_id = parameters->thread_id;
+    multiple = parameters->multiple;
+
+    // Index is no longer needed, so set it to free. 
+    // (Lock is not needed because no two threads will ever acces the same index at the same time)
+    freeIndex[thread_id] = 0;
 
     int i;
-    for (i = 0; i < ((NROF_PIECES/128)); i++) {
+    for (i = 0; i < ((NROF_PIECES/128) + 1); i++) {
         int bit;
-        for (bit = 0; bit < 127; bit++) {
+        for (bit = 0; bit < 128; bit++) {
             // Convert current element to decimal value and check if it can be divided by the current multiple.
             int value = 128 * i + bit;
-            if (value % parameters->multiple == 0) {
+            if (value % multiple == 0) {
                 // Flip bit
-                pthread_mutex_lock (&mutex_flip[value]);
+                // Request lock so there will be no race conditions
+                pthread_mutex_lock (&mutex_flip[i]);
                 if (BIT_IS_SET(buffer[i], bit)) {
                     BIT_CLEAR(buffer[i], bit);
                 } else {
                     BIT_SET(buffer[i], bit);
                 }
-                pthread_mutex_unlock (&mutex_flip[value]);
+                pthread_mutex_unlock (&mutex_flip[i]);
             }
         }
     }
+    
     // Increase semaphore since this thread has finished
     sem_post(&sem);
     // Exit thread
